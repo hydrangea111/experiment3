@@ -1,0 +1,269 @@
+<!DOCTYPE html><html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>다중 코일 구조 발전기의 발전 효율에 대한 탐구</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\', '\']],
+        displayMath: [['\', '\'], ['$$', '$$']]
+      },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #controls {
+      margin-bottom: 1rem;
+      width: 600px;
+      display: flex;
+      justify-content: space-between;
+    }
+    #diagram {
+      position: relative;
+      width: 500px;
+      height: 500px;
+      margin-bottom: 1rem;
+    }
+    .coil {
+      position: absolute;
+      border: 2px solid #333;
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: bold;
+      box-sizing: border-box;
+    }
+    .coil-label {
+      position: absolute;
+      font-size: 12px;
+      font-weight: bold;
+      background: white;
+      padding: 0 3px;
+      user-select: none;
+    }
+    .chart-container {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 1rem;
+    }
+    canvas {
+      width: 250px !important;
+      height: 250px !important;
+    }
+    table {
+      width: 600px;
+      border-collapse: collapse;
+      margin-bottom: 2rem;
+    }
+    th, td {
+      border: 1px solid #999;
+      padding: 0.5rem;
+      text-align: center;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .info-box {
+      width: 600px;
+      border: 1px solid #888;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      background: #fafafa;
+    }
+    .symbol-table {
+      width: 100%;
+      margin-top: 0.5rem;
+      border-collapse: collapse;
+    }
+    .symbol-table td {
+      padding: 4px;
+      vertical-align: top;
+    }
+    .symbol-table td:first-child {
+      width: 70px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>다중 코일 구조 발전기의 발전 효율에 대한 탐구</h1>
+  <div id="controls">
+    <label for="solenoidCount">코일 개수: <span id="solenoidCountLabel">1</span></label>
+    <input type="range" id="solenoidCount" min="1" max="10" value="1" step="1" />
+  </div>
+  <div id="diagram"></div>
+  <div class="chart-container">
+    <canvas id="currentChart"></canvas>
+    <canvas id="emfChart"></canvas>
+  </div>
+  <h3>총 전류: <span id="totalCurrent">0</span> A</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>코일 번호</th>
+        <th>전류 (A)</th>
+        <th>유도 기전력 (V)</th>
+        <th>저항 (Ω)</th>
+      </tr>
+    </thead>
+    <tbody id="dataTable"></tbody>
+  </table>
+  <div class="info-box" id="constantsBox">
+    <h4>고정 상수</h4>
+    <table class="symbol-table">
+      <tr><td>$B_0$</td><td>= 3 T (자기장 세기)</td></tr>
+      <tr><td>$R$</td><td>= 2 Ω (코일 저항)</td></tr>
+      <tr><td>$N$</td><td>= 1000 (감은 횟수)</td></tr>
+      <tr><td>거리</td><td>= 5cm, 10cm, 15cm, ... (코일 번호에 비례)</td></tr>
+    </table>
+  </div>
+  <div class="info-box" id="physicsBox">
+    <h4>물리적 원리</h4>
+    <p><strong>1. 유도 기전력 (Faraday's Law)</strong></p>
+    <p>\varepsilon = -N \frac{d\Phi}{dt}</p>
+    <table class="symbol-table">
+      <tr><td>$\varepsilon$</td><td>유도 기전력 (V)</td></tr>
+      <tr><td>$N$</td><td>코일 감은 횟수</td></tr>
+      <tr><td>$\Phi$</td><td>자기 선속 (Wb)</td></tr>
+    </table>
+    <p><strong>2. 코일 내 자기장</strong></p>
+    <p>B = \frac{\mu_0 N I}{L}</p>
+    <table class="symbol-table">
+      <tr><td>$B$</td><td>자기장 세기 (T)</td></tr>
+      <tr><td>$\mu_0$</td><td>진공 투자율</td></tr>
+      <tr><td>$N$</td><td>감은 횟수</td></tr>
+      <tr><td>$I$</td><td>전류 (A)</td></tr>
+      <tr><td>$L$</td><td>코일 길이 (m)</td></tr>
+    </table>
+    <p><strong>3. 상호 유도 (Mutual Induction)</strong></p>
+    <p>서로 가까운 코일들에서 한 코일의 전류 변화가 인접한 다른 코일에 자기장 변화를 일으켜 유도 기전력을 발생시키는 현상입니다.</p>
+  </div>
+  <script>
+    const slider = document.getElementById('solenoidCount');
+    const label = document.getElementById('solenoidCountLabel');
+    const diagram = document.getElementById('diagram');
+    const totalCurrentDisplay = document.getElementById('totalCurrent');
+    const dataTable = document.getElementById('dataTable');
+    const ctx1 = document.getElementById('currentChart').getContext('2d');
+    const ctx2 = document.getElementById('emfChart').getContext('2d');
+    const B0 = 3, R0 = 2, N = 1000, distance = 0.05, k = 0.7, coilInductance = 1e-3, eta = 0.9, t = 1;function calculateData(n) {
+  const currents = [], emfs = [], resistanceList = [];
+  let totalCurrent = 0, totalEnergy = 0;
+  for (let i = 1; i <= n; i++) {
+    const baseEmf = (B0 * N) / (i * i);
+    const mutualEmf = k * (N * N) * coilInductance / t;
+    const emf = baseEmf + mutualEmf;
+    const current = emf / R0;
+    const energy = emf * current * t;
+    currents.push(current);
+    emfs.push(emf);
+    resistanceList.push(R0);
+    totalCurrent += current;
+    totalEnergy += energy;
+  }
+  const magneticEnergy = (B0 * B0) / (2 * 4e-7);
+  const efficiency = totalEnergy / magneticEnergy * 100;
+  console.log(`코일 ${n}개일 때 효율: ${efficiency.toFixed(2)}%`);
+  return { currents, emfs, resistanceList, totalCurrent };
+}
+
+function updateDiagram(n) {
+  diagram.innerHTML = '';
+  const center = 250, scale = 20;
+  for (let i = 1; i <= n; i++) {
+    const d = scale * i * 2;
+    const coil = document.createElement('div');
+    coil.className = 'coil';
+    coil.style.width = d + 'px';
+    coil.style.height = d + 'px';
+    coil.style.left = center - d / 2 + 'px';
+    coil.style.top = center - d / 2 + 'px';
+    const angleRad = Math.PI / 4;
+    const labelX = center + d / 2 * Math.cos(angleRad);
+    const labelY = center - d / 2 * Math.sin(angleRad);
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'coil-label';
+    labelDiv.style.left = labelX + 'px';
+    labelDiv.style.top = labelY + 'px';
+    labelDiv.textContent = i;
+    diagram.appendChild(coil);
+    diagram.appendChild(labelDiv);
+  }
+}
+
+function updateTable(currents, emfs, resistanceList) {
+  dataTable.innerHTML = '';
+  for (let i = 0; i < currents.length; i++) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${currents[i].toFixed(4)}</td>
+      <td>${emfs[i].toFixed(4)}</td>
+      <td>${resistanceList[i].toFixed(2)}</td>
+    `;
+    dataTable.appendChild(row);
+  }
+}
+
+const chart1 = new Chart(ctx1, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: '전류 (A)',
+      data: [],
+      borderColor: 'red',
+      fill: false,
+      tension: 0.1
+    }]
+  },
+  options: { responsive: true, scales: { y: { beginAtZero: true } } }
+});
+
+const chart2 = new Chart(ctx2, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: '기전력 (V)',
+      data: [],
+      borderColor: 'blue',
+      fill: false,
+      tension: 0.1
+    }]
+  },
+  options: { responsive: true, scales: { y: { beginAtZero: true } } }
+});
+
+function updateAll(n) {
+  label.textContent = n;
+  const { currents, emfs, resistanceList, totalCurrent } = calculateData(n);
+  totalCurrentDisplay.textContent = totalCurrent.toFixed(4);
+  chart1.data.labels = Array.from({ length: n }, (_, i) => `코일 ${i + 1}`);
+  chart1.data.datasets[0].data = currents;
+  chart1.update();
+  chart2.data.labels = Array.from({ length: n }, (_, i) => `코일 ${i + 1}`);
+  chart2.data.datasets[0].data = emfs;
+  chart2.update();
+  updateDiagram(n);
+  updateTable(currents, emfs, resistanceList);
+}
+
+slider.addEventListener('input', () => updateAll(parseInt(slider.value)));
+updateAll(parseInt(slider.value));
+
+  </script>
+</body>
+</html>
